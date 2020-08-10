@@ -4,3 +4,4 @@ env
 ryu
 *_test.py
 __pycache__/
+*.pyc
