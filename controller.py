@@ -25,11 +25,20 @@ class Controller(app_manager.RyuApp):
                                           ofproto.OFPCML_NO_BUFFER)]
         inst = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS,
                                              actions)]
-        mod = parser.OFPFlowMod(datapath=datapath, priority=0,
+        mod = parser.OFPFlowMod(datapath=datapath, priority=0, command=ofproto.OFPFC_ADD
                                 match=match, instructions=inst)
         datapath.send_msg(mod)
 
 
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
     def packet_in_handler(self, ev):
+        # TODO: add dijsktra's paths to flow table or flood
+        pass
+
+
+    topo_mod_events = [event.EventSwitchEnter,
+                    event.EventSwitchLeave]
+    @set_ev_cls(topo_mod_events)
+    def update_topology(self, ev):
+        # TODO: store topology graph
         pass
