@@ -36,8 +36,10 @@ class Controller(app_manager.RyuApp):
         pass
 
 
-    topo_mod_events = [event.EventSwitchEnter,
-                    event.EventSwitchLeave]
+    topo_mod_events = [event.EventSwitchEnter, 
+                    event.EventSwitchLeave, 
+                    event.EventLinkAdd, 
+                    event.EventLinkDelete]
     @set_ev_cls(topo_mod_events)
     def update_topology(self, ev):
         # TODO: store topology graph
