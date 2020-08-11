@@ -1,0 +1,5 @@
+RATIO           = 2
+BANDWIDTH       = [5, 1]
+T_CHBW          = 10 / RATIO
+PORT_CONTROLLER = 9966
+IP_CONTROLLER   = '127.0.0.1'
