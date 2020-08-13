@@ -6,7 +6,7 @@ from ryu.controller.handler import set_ev_cls
 from ryu.ofproto import ofproto_v1_3
 from ryu.lib.packet import packet
 from ryu.topology import event
-from ryu.topology.api import get_switch, get_link
+from ryu.topology.api import get_all_link, get_all_switch
 import copy
 
 
@@ -23,11 +23,10 @@ class Controller(app_manager.RyuApp):
         self.mac_to_port = {}
 
     @set_ev_cls(ofp_event.EventOFPSwitchFeatures, CONFIG_DISPATCHER)
-    def switch_features_handler(self, ev):
+    def _switch_features_handler(self, ev):
         datapath = ev.msg.datapath
         ofproto = datapath.ofproto
         parser = datapath.ofproto_parser
-
         match = parser.OFPMatch()
         actions = [parser.OFPActionOutput(ofproto.OFPP_CONTROLLER,
                                           ofproto.OFPCML_NO_BUFFER)]
@@ -39,7 +38,7 @@ class Controller(app_manager.RyuApp):
 
 
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
-    def packet_in_handler(self, ev):
+    def _packet_in_handler(self, ev):
         # TODO: add dijsktra's paths to flow table or flood
         pass
 
@@ -52,12 +51,12 @@ class Controller(app_manager.RyuApp):
     sw_update_events = [event.EventSwitchEnter,
                         event.EventSwitchLeave]
     @set_ev_cls(sw_update_events)
-    def get_all_switches(self, ev):
+    def _get_all_switches(self, ev):
 
         global switches
         print( "getting all switches ...")
 
-        tmp = get_switch(self, None)
+        tmp = get_all_switch(self)
         tmp_switches = [switch.dp.id for switch in tmp]
         switches = copy.deepcopy(tmp_switches)
         print( "Switches: ", switches)
@@ -68,12 +67,12 @@ class Controller(app_manager.RyuApp):
     links_update_events = [event.EventLinkAdd,
                         event.EventLinkDelete]
     @set_ev_cls(links_update_events)
-    def get_all_links(self, ev):
+    def _get_all_links(self, ev):
 
         global links
         print( "getting all links ...")
 
-        tmp = get_link(self, None)
+        tmp = get_all_link(self)
         tmp_links = [
                         {
                             'src_dpid': link.src.dpid,
