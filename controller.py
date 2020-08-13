@@ -44,8 +44,16 @@ class Controller(app_manager.RyuApp):
 
     
     def update_topology(self):
-        # TODO : update network topology graph
-        pass
+        
+        global sw_topo, switches, links
+
+        sw_cnt = len(switches)
+        tmp_sw_topo = [ [None for i in range(sw_cnt)] for j in range(sw_cnt) ]
+        for link in links:
+            tmp_sw_topo[link['src_dpid']-1][link['dst_dpid']-1] = link['src_port_no']
+            tmp_sw_topo[link['dst_dpid']-1][link['src_dpid']-1] = link['dst_port_no']
+        sw_topo = copy.deepcopy(tmp_sw_topo)
+        # print(sw_topo)
 
 
     sw_update_events = [event.EventSwitchEnter,
