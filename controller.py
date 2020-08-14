@@ -57,11 +57,11 @@ class Controller(app_manager.RyuApp):
         global switches
         print( "getting all switches ...")
 
-        tmp = get_all_switch(self)
-        switches = copy.deepcopy(tmp)
-        print( "Switches: ")
+        switches = get_all_switch(self)
+        sw_ids = []
         for sw in switches:
-            print(sw.dp.id, end=" ")
+            sw_ids.append(sw.dp.id)
+        print( "Switches: " , sw_ids)
 
         self.update_topology()
 
