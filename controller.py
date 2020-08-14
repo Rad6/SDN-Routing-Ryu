@@ -7,6 +7,7 @@ from ryu.ofproto import ofproto_v1_3
 from ryu.lib.packet import packet
 from ryu.topology import event
 from ryu.topology.api import get_all_link, get_all_switch
+from ryu.lib.packet import ethernet, ether_types
 import copy
 
 
@@ -17,6 +18,8 @@ sw_topo = []
 
 class Controller(app_manager.RyuApp):
     OFP_VERSIONS = [ofproto_v1_3.OFP_VERSION]
+    sw_update_events = [event.EventSwitchEnter, event.EventSwitchLeave]
+    links_update_events = [event.EventLinkAdd, event.EventLinkDelete]
 
     def __init__(self, *args, **kwargs):
         super(Controller, self).__init__(*args, **kwargs)
@@ -37,14 +40,7 @@ class Controller(app_manager.RyuApp):
         datapath.send_msg(mod)
 
 
-    @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
-    def _packet_in_handler(self, ev):
-        # TODO: add dijsktra's paths to flow table or flood
-        pass
-
-    
     def update_topology(self):
-        
         global sw_topo, switches, links
 
         sw_cnt = len(switches)
@@ -55,28 +51,23 @@ class Controller(app_manager.RyuApp):
         sw_topo = copy.deepcopy(tmp_sw_topo)
         # print(sw_topo)
 
-
-    sw_update_events = [event.EventSwitchEnter,
-                        event.EventSwitchLeave]
+    
     @set_ev_cls(sw_update_events)
     def _get_all_switches(self, ev):
-
         global switches
         print( "getting all switches ...")
 
         tmp = get_all_switch(self)
-        tmp_switches = [switch.dp.id for switch in tmp]
-        switches = copy.deepcopy(tmp_switches)
-        print( "Switches: ", switches)
+        switches = copy.deepcopy(tmp)
+        print( "Switches: ")
+        for sw in switches:
+            print(sw.dp.id, end=" ")
 
         self.update_topology()
 
-
-    links_update_events = [event.EventLinkAdd,
-                        event.EventLinkDelete]
+    
     @set_ev_cls(links_update_events)
     def _get_all_links(self, ev):
-
         global links
         print( "getting all links ...")
 
@@ -96,3 +87,87 @@ class Controller(app_manager.RyuApp):
             print(link)
 
         self.update_topology()
+
+
+    @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
+    def _packet_in_handler(self, ev):
+        if ev.msg.msg_len < ev.msg.total_len:
+            self.logger.debug("packet truncated: only %s of %s bytes",
+                              ev.msg.msg_len, ev.msg.total_len)
+        msg = ev.msg
+        datapath = msg.datapath
+        ofproto = datapath.ofproto
+        parser = datapath.ofproto_parser
+        in_port = msg.match['in_port']
+
+        pkt = packet.Packet(msg.data)
+        eth = pkt.get_protocol(ethernet.ethernet)[0]
+        if eth.ethertype == ether_types.ETH_TYPE_LLDP:
+            # ignore lldp packet
+            return
+
+        dst = eth.dst
+        src = eth.src
+
+        dpid = datapath.id
+        self.mac_to_port.setdefault(dpid, {})
+
+        stored_src = False
+        src_sw_dpid = None
+        for sw in switches:
+            if src in self.mac_to_port[sw.dp.id]:
+                stored_src = True
+                src_sw_dpid = sw.dp.id
+                break
+        if not stored_src:
+            self.mac_to_port[dpid][src] = in_port
+            src_sw_dpid = dpid
+        
+        stored_dst = False
+        dst_sw_dpid = None
+        for sw in switches:
+            if dst in self.mac_to_port[sw.dp.id]:
+                stored_dst = True
+                dst_sw_dpid = sw.dp.id
+                break
+
+        if stored_dst:
+            path = self.get_dijkstra_path(src, src_sw_dpid, dst, dst_sw_dpid)
+            out_port = path[0][2]
+            self.install_path(src, dst, path, datapath, 1)
+        else:
+            out_port = ofproto.OFPP_FLOOD
+
+        # Now tell the switch to send the packet
+        actions = [parser.OFPActionOutput(out_port)]
+        data = None
+        if msg.buffer_id == ofproto.OFP_NO_BUFFER:
+           data = msg.data
+
+        out = parser.OFPPacketOut(datapath=datapath, buffer_id=msg.buffer_id,
+                                in_port=in_port, actions=actions, data=data)
+        datapath.send_msg(out)
+
+
+    def get_dijkstra_path(self, src, src_sw_dpid, dst, dst_sw_dpid):
+        # TODO : return a path
+        # path format should be: list of (in_port, sw, out_port) tuples
+        return
+
+    
+    def install_path(self, src, dst, path, datapath, priority):
+        ofproto = datapath.ofproto
+        parser = datapath.ofproto_parser
+
+        print("installing a path from " + str(src), " to " + str(dst))
+        for in_port, sw, out_port in path:
+            print("in_port: " + str(in_port) + " , switch: " + str(sw) + " , out_port: " + str(out_port))
+            match = parser.OFPMatch(in_port=in_port, eth_src=src_mac, eth_dst=dst_mac)
+            actions = [parser.OFPActionOutput(out_port)]
+            datapath = sw.dp
+            inst = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS , actions)]
+            mod = parser.OFPFlowMod(datapath=datapath, match=match,
+                                    priority=priority, instructions=inst)
+            datapath.send_msg(mod)
+
+    
