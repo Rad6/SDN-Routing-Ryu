@@ -175,7 +175,7 @@ class Controller(app_manager.RyuApp):
         while len(Q) > 0:
             u = self.min_distance(dist, Q)
             for sw in switches:
-                if sw_topo[u][sw.dp.id] != None:
+                if sw_topo[u - 1][sw.dp.id - 1] != None:
                     l = self.get_link(u, sw.dp.id)
                     weight = l['weight']
                     if dist[u] + weight < dist[sw.dp.id]:
@@ -191,26 +191,6 @@ class Controller(app_manager.RyuApp):
         
         reversed_path.reverse()
         path = copy.deepcopy(reversed_path)
-        # r = []
-        # p = dst
-        # r.append(p)
-        # q = prev[p]
-
-        # while q is not None:
-        #     if q == src:
-        #         r.append(q)
-        #         break
-        #     p = q
-        #     r.append(p)
-        #     q = prev[p]
-
-        # r.reverse()
-        # if src == dst:
-        #     path = [src]
-        # else:
-        #     path = r
-
-        # Now add the ports
         path_with_ports = []
         in_port = src_port
         for s1, s2 in zip( path[:-1], path[1:] ):
@@ -225,7 +205,7 @@ class Controller(app_manager.RyuApp):
 
     def min_distance(self, dist, Q):
         min = float('Inf')
-        sw = None
+        sw = 1
         for each in Q:
             if dist[each] < min:
                 min = dist[each]
@@ -237,7 +217,7 @@ class Controller(app_manager.RyuApp):
         global links
         for link in links:
             if link['src_dpid'] == src_dpid and link['dst_dpid'] == dst_dpid:
-                return links
+                return link
         return "NotFound"
     
 
