@@ -77,7 +77,8 @@ class Controller(app_manager.RyuApp):
                             'src_dpid': link.src.dpid,
                             'dst_dpid': link.dst.dpid,
                             'src_port_no': link.src.port_no,
-                            'dst_port_no': link.dst.port_no
+                            'dst_port_no': link.dst.port_no,
+                            'weight' : 1 # don't forget to change this!
                         }
                         for link in tmp
                     ]
@@ -101,7 +102,7 @@ class Controller(app_manager.RyuApp):
         in_port = msg.match['in_port']
 
         pkt = packet.Packet(msg.data)
-        eth = pkt.get_protocol(ethernet.ethernet)[0]
+        eth = pkt.get_protocol(ethernet.ethernet)
         if eth.ethertype == ether_types.ETH_TYPE_LLDP:
             # ignore lldp packet
             return
@@ -115,10 +116,11 @@ class Controller(app_manager.RyuApp):
         stored_src = False
         src_sw_dpid = None
         for sw in switches:
-            if src in self.mac_to_port[sw.dp.id]:
-                stored_src = True
-                src_sw_dpid = sw.dp.id
-                break
+            if sw.dp.id in self.mac_to_port:
+                if src in self.mac_to_port[sw.dp.id]:
+                    stored_src = True
+                    src_sw_dpid = sw.dp.id
+                    break
         if not stored_src:
             self.mac_to_port[dpid][src] = in_port
             src_sw_dpid = dpid
@@ -126,10 +128,11 @@ class Controller(app_manager.RyuApp):
         stored_dst = False
         dst_sw_dpid = None
         for sw in switches:
-            if dst in self.mac_to_port[sw.dp.id]:
-                stored_dst = True
-                dst_sw_dpid = sw.dp.id
-                break
+            if sw.dp.id in self.mac_to_port:
+                if dst in self.mac_to_port[sw.dp.id]:
+                    stored_dst = True
+                    dst_sw_dpid = sw.dp.id
+                    break
 
         if stored_dst:
             path = self.get_dijkstra_path(src, src_sw_dpid, dst, dst_sw_dpid)
@@ -150,11 +153,94 @@ class Controller(app_manager.RyuApp):
 
 
     def get_dijkstra_path(self, src, src_sw_dpid, dst, dst_sw_dpid):
-        # TODO : return a path
-        # path format should be: list of (in_port, sw, out_port) tuples
-        return
+        global switches, sw_topo
+        
+        # note that these ports are the ones direclty connected to the hosts:
+        src_port = self.mac_to_port[src_sw_dpid][src]
+        dst_port = self.mac_to_port[dst_sw_dpid][dst]
+        
+        print( "Finding dijkstra's shortest path for: \n")
+        print( "src: ", src, " src_port: ", src_port, " dst: ", dst, " dst_port: ", dst_port)
 
+        Q = []
+        dist = {}
+        prev = {}
+
+        for sw in switches:
+            Q.append(sw.dp.id)
+            dist[sw.dp.id] = float('Inf')
+            prev[sw.dp.id] = None
+        dist[src] = 0
+
+        while len(Q) > 0:
+            u = self.min_distance(dist, Q)
+            for sw in switches:
+                if sw_topo[u][sw.dp.id] != None:
+                    l = self.get_link(u, sw.dp.id)
+                    weight = l['weight']
+                    if dist[u] + weight < dist[sw.dp.id]:
+                        dist[sw.dp.id] = dist[u] + weight
+                        prev[sw.dp.id] = u
+
+        reversed_path = []
+        reversed_path.append(dst_sw_dpid)
+        while True:
+            if reversed_path[-1] == src_sw_dpid:
+                break
+            reversed_path.append(prev[reversed_path[-1]])
+        
+        reversed_path.reverse()
+        path = copy.deepcopy(reversed_path)
+        # r = []
+        # p = dst
+        # r.append(p)
+        # q = prev[p]
+
+        # while q is not None:
+        #     if q == src:
+        #         r.append(q)
+        #         break
+        #     p = q
+        #     r.append(p)
+        #     q = prev[p]
+
+        # r.reverse()
+        # if src == dst:
+        #     path = [src]
+        # else:
+        #     path = r
+
+        # Now add the ports
+        path_with_ports = []
+        in_port = src_port
+        for s1, s2 in zip( path[:-1], path[1:] ):
+            out_port = sw_topo[s1][s2]
+            path_with_ports.append( (in_port, s1, out_port) )
+            in_port = sw_topo[s2][s1]
+        path_with_ports.append( (in_port, dst, dst_port) )
+        return path_with_ports
+
+        # path format should be: list of (in_port, sw, out_port) tuples
+
+
+    def min_distance(self, dist, Q):
+        min = float('Inf')
+        sw = None
+        for each in Q:
+            if dist[each] < min:
+                min = dist[each]
+                sw = each
+        return sw
+
+
+    def get_link(self, src_dpid, dst_dpid):
+        global links
+        for link in links:
+            if link['src_dpid'] == src_dpid and link['dst_dpid'] == dst_dpid:
+                return links
+        return "NotFound"
     
+
     def install_path(self, src, dst, path, datapath, priority):
         ofproto = datapath.ofproto
         parser = datapath.ofproto_parser
@@ -162,7 +248,7 @@ class Controller(app_manager.RyuApp):
         print("installing a path from " + str(src), " to " + str(dst))
         for in_port, sw, out_port in path:
             print("in_port: " + str(in_port) + " , switch: " + str(sw) + " , out_port: " + str(out_port))
-            match = parser.OFPMatch(in_port=in_port, eth_src=src_mac, eth_dst=dst_mac)
+            match = parser.OFPMatch(in_port=in_port, eth_src=src, eth_dst=dst)
             actions = [parser.OFPActionOutput(out_port)]
             datapath = sw.dp
             inst = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS , actions)]
