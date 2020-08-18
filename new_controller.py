@@ -41,7 +41,8 @@ adjacency=defaultdict(lambda:defaultdict(lambda:None))
 
 def minimum_distance(distance, Q):
     min = float('Inf')
-    node = 0
+    tmp = list(Q)
+    node = tmp[0]
     for v in Q:
         if distance[v] < min:
             min = distance[v]
