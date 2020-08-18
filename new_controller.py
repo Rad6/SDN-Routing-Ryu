@@ -61,7 +61,7 @@ def get_path (src,dst,first_port,final_port):
 
     distance[src]=0
     Q=set(switches)
-    print( "Q=", Q)
+    # print( "Q=", Q)
 
     while len(Q)>0:
         u = minimum_distance(distance, Q)
@@ -118,6 +118,7 @@ class ProjectController(app_manager.RyuApp):
 
 
     def add_flow(self, datapath, in_port, dst, actions):
+        # TODO: -------------------- DELETESH KON BERE
         ofproto = datapath.ofproto
         parser = datapath.ofproto_parser      
         match = datapath.ofproto_parser.OFPMatch(in_port=in_port, eth_dst=dst)
@@ -130,8 +131,8 @@ class ProjectController(app_manager.RyuApp):
 
 
     def install_path(self, p, ev, src_mac, dst_mac):
-        print( "install_path is called")
-        #print( "p=", p, " src_mac=", src_mac, " dst_mac=", dst_mac)
+        print( "\n\ninstall_path is called")
+        print( "p=", p, " src_mac=", src_mac, " dst_mac=", dst_mac)
         msg = ev.msg
         datapath = msg.datapath 
         ofproto = datapath.ofproto
@@ -140,7 +141,10 @@ class ProjectController(app_manager.RyuApp):
             #print( src_mac,"->", dst_mac, "via ", sw, " in_port=", in_port, " out_port=", out_port)
             match=parser.OFPMatch(in_port=in_port, eth_src=src_mac, eth_dst=dst_mac)
             actions=[parser.OFPActionOutput(out_port)]
-            datapath=self.datapath_list[int(sw)-1]
+            for item in self.datapath_list:
+                if item.id == sw:
+                    datapath = item
+            # datapath=self.datapath_list[int(sw)-1]
             inst = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS , actions)]
             mod = datapath.ofproto_parser.OFPFlowMod(
             datapath=datapath, match=match, idle_timeout=0, hard_timeout=0,
@@ -190,7 +194,7 @@ class ProjectController(app_manager.RyuApp):
 
         if dst in mymac.keys():
             p = get_path(mymac[src][0], mymac[dst][0], mymac[src][1], mymac[dst][1])
-            print( p)
+            # print( p)
             self.install_path(p, ev, src, dst)
             out_port = p[0][2]
         else:
@@ -198,6 +202,7 @@ class ProjectController(app_manager.RyuApp):
         actions = [parser.OFPActionOutput(out_port)]
 
         # install a flow to avoid packet_in next time
+        # TODO: --------------- UNUSED
         if out_port != ofproto.OFPP_FLOOD:
             match = parser.OFPMatch(in_port=in_port, eth_src=src, eth_dst=dst)
 
@@ -210,8 +215,12 @@ class ProjectController(app_manager.RyuApp):
             actions=actions, data=data)
         datapath.send_msg(out)
 
-    
-    @set_ev_cls(event.EventSwitchEnter)
+    events = [event.EventSwitchEnter,
+            # event.EventSwitchLeave, event.EventPortAdd,
+            # event.EventPortDelete, event.EventPortModify,
+            # event.EventLinkAdd, event.EventLinkDelete
+    ]
+    @set_ev_cls(events)
     def get_topology_data(self, ev):
         global switches
         switch_list = get_switch(self.topology_api_app, None)  
