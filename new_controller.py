@@ -39,17 +39,24 @@ mymac={}
 #adjacency map [sw1][sw2]->port from sw1 to sw2
 adjacency=defaultdict(lambda:defaultdict(lambda:None))
 
+# a function that finds and returns the Q element which
+# has the minimum distance value in distance list
 def minimum_distance(distance, Q):
-    min = float('Inf')
+    min = float('Inf') # initializing min
     tmp = list(Q)
-    node = tmp[0]
+    node = tmp[0] # # initializing node
     for v in Q:
-        if distance[v] < min:
+        if distance[v] <= min:
             min = distance[v]
             node = v
     return node
 
  
+ # Dijkstra's algorithm,
+ # given the source and destination switches, and inout ports 
+ # to them from host, it will find you a dijkstra minimal path 
+ # which has the following return format:
+ # List of (switch dpid, switch in-port, switch out-port)
 def get_path (src,dst,first_port,final_port):
     #Dijkstra's algorithm
     print( "get_path is called, src=",src," dst=",dst, " first_port=", first_port, " final_port=", final_port)
@@ -57,9 +64,12 @@ def get_path (src,dst,first_port,final_port):
     previous = {}
 
     for dpid in switches:
+        # initialize all distances to Inf
         distance[dpid] = float('Inf')
+        # initialize all previous nodes to None
         previous[dpid] = None
 
+    # source node distance should be 0
     distance[src]=0
     Q=set(switches)
     # print( "Q=", Q)
@@ -217,9 +227,9 @@ class ProjectController(app_manager.RyuApp):
         datapath.send_msg(out)
 
     events = [event.EventSwitchEnter,
-            # event.EventSwitchLeave, event.EventPortAdd,
-            # event.EventPortDelete, event.EventPortModify,
-            # event.EventLinkAdd, event.EventLinkDelete
+            event.EventSwitchLeave, event.EventPortAdd,
+            event.EventPortDelete, event.EventPortModify,
+            event.EventLinkAdd, event.EventLinkDelete
     ]
     @set_ev_cls(events)
     def get_topology_data(self, ev):

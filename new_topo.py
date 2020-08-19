@@ -78,13 +78,13 @@ def create_topo():
         link[i] = net.addLink(item[0], item[1], cls=TCLink, bw=BANDWIDTH[0], loss=0)
 
 
-    # net.build()
-    # # controller.start()
-    # for controller in net.controllers:
-    #     controller.start()
-    # for _, item in switch.items():
-    #     item.start([controller])
-    net.start()
+    net.build()
+    # controller.start()
+    for controller in net.controllers:
+        controller.start()
+    for _, item in switch.items():
+        item.start([controller])
+    # net.start()
     CLI(net)
     print "net is done..."
     net.stop()
