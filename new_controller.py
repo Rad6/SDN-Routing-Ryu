@@ -187,7 +187,7 @@ class ProjectController(app_manager.RyuApp):
             # datapath=self.datapath_list[int(sw)-1] # wrong !
             # creating an instruction object which consists of an action + a mode. here we use apply mode.
             inst = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS , actions)]
-            # creating a FlowMod object to make the switch modify its flow table. while the given path 
+            # creating a FlowMod object to make the switch modify its flow table. Since the given path 
             # is a one leading to dst, we use priority = 1, which is higher than table miss priority.
             mod = datapath.ofproto_parser.OFPFlowMod(
             datapath=datapath, match=match, idle_timeout=0, hard_timeout=0,
@@ -195,68 +195,94 @@ class ProjectController(app_manager.RyuApp):
             # Finally sending the FLowMod object to the switch
             datapath.send_msg(mod)
 
- 
+    
+    # A handler for SwitchFeatures event, which is called only in CONFIG_DISPATCHER phase
+    # Handler's main responsibility is to add a table-miss entry to all newly connected switches
     @set_ev_cls(ofp_event.EventOFPSwitchFeatures , CONFIG_DISPATCHER)
     def switch_features_handler(self , ev):
         print( "switch_features_handler is called")
-        datapath = ev.msg.datapath
-        ofproto = datapath.ofproto
-        parser = datapath.ofproto_parser
+        datapath = ev.msg.datapath # datapath representing the switch currently
+                                # connected to the controller
+        ofproto = datapath.ofproto # Referencing  the library for the chosen 
+                                # version of the OpenFlow protocol used in 
+                                # communicating between the OpenFlow elements
+        parser = datapath.ofproto_parser # Referencing the message parsing library
+                                        # used in our OpenFlow protocol version
+        # creating a match object with no input argument. This means that it will match all packets
         match = parser.OFPMatch()
+        # An action object which forwards all the matched packets to the controller, with a NO_BUFFER option set.
         actions = [parser.OFPActionOutput(ofproto.OFPP_CONTROLLER, ofproto.OFPCML_NO_BUFFER)]
+        # creating an instruction object which consists of an action + a mode. here we use apply mode.
         inst = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS, actions)]
+        # creating a FlowMod object to make the switch modify its flow table. since the given path 
+        # is a one leading to controller(if all entries didnt match), we use priority = 0, to be checked at last.
         mod = datapath.ofproto_parser.OFPFlowMod(
         datapath=datapath, match=match, cookie=0,
         command=ofproto.OFPFC_ADD, idle_timeout=0, hard_timeout=0,
         priority=0, instructions=inst)
+        # Finally sending the FLowMod object to the switch
         datapath.send_msg(mod)
 
- 
+    # A handler for SwitchFeatures event, which is called only in NORMAL_DISPATCHER phase (Normal status)
+    # Handler's main responsibility is to check whether a Dijkstra path could be installed for the packet dst,
+    # (if dst host exists in mymac) or not.
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
     def _packet_in_handler(self, ev):
-        msg = ev.msg
-        datapath = msg.datapath
-        ofproto = datapath.ofproto
-        parser = datapath.ofproto_parser
-        in_port = msg.match['in_port']
-        pkt = packet.Packet(msg.data)
-        eth = pkt.get_protocol(ethernet.ethernet)
+        msg = ev.msg # The OpenFlow message included in the event object
+        datapath = msg.datapath # datapath representing the switch currently
+                                # connected to the controller
+        ofproto = datapath.ofproto # Referencing  the library for the chosen 
+                                # version of the OpenFlow protocol used in 
+                                # communicating between the OpenFlow elements
+        parser = datapath.ofproto_parser # Referencing the message parsing library
+                                        # used in our OpenFlow protocol version
+        in_port = msg.match['in_port'] # getting packet input port
+        pkt = packet.Packet(msg.data) 
+        eth = pkt.get_protocol(ethernet.ethernet) # getting packet protocol header
         #print( "eth.ethertype=", eth.ethertype)
 
-        #avodi broadcast from LLDP
+        #avoid broadcast from LLDP 
         if eth.ethertype==35020:
             return
 
-        dst = eth.dst
-        src = eth.src
-        dpid = datapath.id
-        self.mac_to_port.setdefault(dpid, {})
+        dst = eth.dst # destination host mac address
+        src = eth.src # source host mac address
+        dpid = datapath.id 
+        self.mac_to_port.setdefault(dpid, {}) # creating mac_to_port if not created yet. which is not used also.
 
+        # add src mac address (with corresponding in-port) to mymac dict if it's not yet added.
         if src not in mymac.keys():
             mymac[src]=( dpid,  in_port)
             #print( "mymac=", mymac)
 
+        # if the destination host is already discovered, we find a dijkstra path for it.
         if dst in mymac.keys():
             p = get_path(mymac[src][0], mymac[dst][0], mymac[src][1], mymac[dst][1])
             # print( p)
+            # intalling the path 'p' to avoid packetIn event for the same (src and dst) packets next time
             self.install_path(p, ev, src, dst)
-            out_port = p[0][2]
+            out_port = p[0][2] # output port for the very beginning switch of the path
+        # if the destination host is not yet discovered, we FLOOD the packet.
         else:
             out_port = ofproto.OFPP_FLOOD
+        # And the recieved packet should be forwarded too. So we need an ActionOutput object.
         actions = [parser.OFPActionOutput(out_port)]
 
         # install a flow to avoid packet_in next time
-        # TODO: --------------- UNUSED
-        if out_port != ofproto.OFPP_FLOOD:
-            match = parser.OFPMatch(in_port=in_port, eth_src=src, eth_dst=dst)
+        # Since we've already implemeneted and called install_path, so this part is useless
+        # if out_port != ofproto.OFPP_FLOOD:
+        #     match = parser.OFPMatch(in_port=in_port, eth_src=src, eth_dst=dst)
 
-        data=None
+        data=None # initializing to-be-sent packet data section
+        # check whether message is buffered or not. if not, data has to be set to message's payload
         if msg.buffer_id==ofproto.OFP_NO_BUFFER:
             data=msg.data
- 
+        
+        # creating a PacketOut object
         out = parser.OFPPacketOut(
             datapath=datapath, buffer_id=msg.buffer_id, in_port=in_port,
             actions=actions, data=data)
+        # Sending the PacketOut object to the switch so that it will forward the packet to the specified port
         datapath.send_msg(out)
 
     events = [event.EventSwitchEnter,
@@ -264,18 +290,25 @@ class ProjectController(app_manager.RyuApp):
             event.EventPortDelete, event.EventPortModify,
             event.EventLinkAdd, event.EventLinkDelete
     ]
+    # A handler for retrieving mininet topology (switches and links)
+    # it will be called once one of the 'events' items triggers
     @set_ev_cls(events)
     def get_topology_data(self, ev):
         global switches
+        # getting all connected switches. The first input argument could just be simply 'self'
         switch_list = get_switch(self.topology_api_app, None)  
+        # saving switches dpid instead of switch objects, into 'switches'
         switches=[switch.dp.id for switch in switch_list]
+        # There's a datapath list needed for install_path, since we just keep switches dpids.
         self.datapath_list=[switch.dp for switch in switch_list]
         #print( "self.datapath_list=", self.datapath_list)
         print( "switches=", switches)
-
+        # retrieving all links between switches. Similarly, the first input argument could just be simply 'self'
         links_list = get_link(self.topology_api_app, None)
+        # saving link endpoints dpids and port numbers into 'mylink'
         mylinks=[(link.src.dpid,link.dst.dpid,link.src.port_no,link.dst.port_no) for link in links_list]
         for s1,s2,port1,port2 in mylinks:
+            # Filling switches adjacency matrix using 'mylinks'
             adjacency[s1][s2]=port1
             adjacency[s2][s1]=port2
             #print( s1,s2,port1,port2)
