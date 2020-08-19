@@ -261,7 +261,11 @@ class ProjectController(app_manager.RyuApp):
             # print( p)
             # intalling the path 'p' to avoid packetIn event for the same (src and dst) packets next time
             self.install_path(p, ev, src, dst)
-            out_port = p[0][2] # output port for the very beginning switch of the path
+            # out_port = p[0][2] # output port for the very beginning switch of the path, which is wrong
+            # finding the actual outport 
+            for i in range (len(p)):
+                if p[i][0] == dpid:
+                    out_port = p[i][2]
         # if the destination host is not yet discovered, we FLOOD the packet.
         else:
             out_port = ofproto.OFPP_FLOOD
